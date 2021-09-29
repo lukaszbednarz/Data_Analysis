@@ -1,0 +1,455 @@
+Raw Loans Analysis
+========================
+
+------
+
+### Load libraries
+
+```{r}
+#library(maps)
+#library(Hmisc)
+```
+
+
+
+------
+
+## Processing
+
+Download the data, read the data in and save the raw data as an RDA file
+
+```{r loadData,cache=TRUE}
+setwd("C:/Users/Lukasz/Documents/R/AssignmentProject_2/code/rawcode")
+getwd()
+# download.file("https://spark-public.s3.amazonaws.com/dataanalysis/samsungData.rda",destfile="../../data/samsungDataDownloaded.rda")
+# 
+# dateDownloaded <- date()
+# dateDownloaded
+# 
+# saveRDS(dateDownloaded,file="../../data/samsungDataDownloaded.rda")
+# 
+# load("../../data/samsungDataDownloaded.rda")
+# 
+# save(samsungData, dateDownloaded,file="../../data/samsungData.rda")
+
+load("../../data/samsungData.rda")
+
+```
+
+
+### Look at the data set
+
+```{r, dependson="loadData"}
+head(samsungData)
+names(samsungData)
+
+sort(table(names(samsungData)))
+
+unique(samsungData$activity)
+unique(samsungData$subject)
+table(samsungData$subject)
+
+```
+
+### replace duplicated column names
+```{r, dependson="loadData"}
+colNames <- names(samsungData)
+colNamesTable <- table(colNames)
+
+dupColNames <- names(colNamesTable[colNamesTable > 1])
+
+
+
+for (name in colNames) {
+  
+  if (is.element(name, dupColNames)) {
+    name <- paste(name,)
+  }
+}
+
+```
+
+### Find out about missing values
+```{r, dependson="loadData"}
+sum(is.na(samsungData))
+```
+
+### Create training set and test sets
+```{r splitData, dependson="loadData"}
+
+trainData <- samsungData[is.element(samsungData$subject, c(1,3,5,6)),]
+table(trainData$subject)
+
+testData <- samsungData[is.element(samsungData$subject, c(27,28,29,30)),]
+table(testData$subject)
+
+```
+
+### Try with a tree
+```{r , dependson="splitData"}
+library(tree)
+
+tree(activity ~ .,data=trainData)
+
+```
+
+
+### Convert Factors to indexed equivalents.
+```{r processData, dependson="cleanData"}
+
+loansProcessed<- loansComplete
+
+loansProcessed$Interest.Rate        <- as.numeric(sub("%","",loansProcessed$Interest.Rate))/100
+loansProcessed$Debt.To.Income.Ratio <- as.numeric(sub("%","",loansProcessed$Debt.To.Income.Ratio))/100
+# loansFinal$Loan.Length          <- as.numeric(sub(" months","",loansComplete$Loan.Length))
+# 
+# loansFinal$Employment.Length[loansFinal$Employment.Lenth == "n/a" ] <- NA    
+# 
+# loansFinal$Employment.Length    <- as.numeric(sub(" years?", "" ,sub("10\\+ years", "10", sub("< 1 year","0",loansFinal$Employment.Length))))
+
+loansProcessed$FICO.Range           <- sapply(strsplit(as.character(loansProcessed$FICO.Range) , "-" ), function(x) mean(as.numeric(x)))
+
+# levels(loansFinal$Loan.Purpose) <- 1:length(levels(loansFinal$Loan.Purpose))
+# loansFinal$Loan.Purpose         <- as.numeric(loansFinal$Loan.Purpose)
+# 
+# 
+# levels(loansFinal$State) <- 1:length(levels(loansFinal$State))
+# loansFinal$State        <- as.numeric(loansFinal$State)
+# 
+# levels(loansFinal$Home.Ownership) <- 1:length(levels(loansFinal$Home.Ownership))
+# loansFinal$Home.Ownership        <- as.numeric(loansFinal$Home.Ownership)
+# 
+
+```
+
+### Filter one outlier
+```{r filterData, dependson="processData"}
+
+loansFinal <- loansProcessed[!(loansProcessed$FICO.Range < 700 & loansProcessed$Interest.Rate < 0.065 & loansProcessed$Loan.Length == "60 months"),]
+
+``` 
+
+------
+
+## Exploratory analysis
+
+### Make some univariate plots/summaries
+
+```{r, dependson="processData"}
+hist(loansFinal$Interest.Rate, breaks= 100)
+lines(density(loansFinal$Interest.Rate[loansFinal$Loan.Length ==36 ]), col ="red")
+lines(density(loansFinal$Interest.Rate[loansFinal$Loan.Length ==60 ]), col ="blue")
+
+quantile(loansFinal$Interest.Rate)
+hist(loansFinal$FICO.Range,breaks=unique(loansFinal$FICO.Range))
+quantile(loansFinal$FICO.Range)
+hist(loansFinal$Employment.Length)
+hist(loansFinal$Amount.Requested)
+hist(loansFinal$Monthly.Income, breaks=100)
+hist(loansFinal$Revolving.CREDIT.Balance, breaks=100)
+hist(loansFinal$Revolving.CREDIT.Balance, breaks=100)
+
+```
+
+### Make some univariate tables
+```{r, dependson="processData"}
+table(loansFinal$Employment.Length)
+table(loansFinal$Loan.Purpose)
+table(loansFinal$State)
+table(loansFinal$Employment.Length)
+table(loansFinal$Loan.Purpose)
+table(loansFinal$Home.Ownership)
+
+
+```
+
+
+### IntrestRates vs FICO -> strong dependence
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$FICO.Range, varwidth=T)
+
+```
+
+### IntrestRates vs Loan length -> strong dependence
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Loan.Length, varwidth=T)
+```
+
+### IntrestRates vs Ammount Requested
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Amount.Requested, varwidth=T)
+```
+
+### IntrestRates vs Employment Dur
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Employment.Length, varwidth=T)
+```
+
+### FICO vs Employment Dur
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$FICO.Range ~ loansFinal$Employment.Length, varwidth=T)
+```
+
+### FICO vs Earnings
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$FICO.Range ~ loansFinal$Monthly.Income, varwidth=T)
+```
+
+### FICO vs State
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$FICO.Range ~ loansFinal$State, varwidth=T)
+```
+
+### IntrestRates vs Home Ownership
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Home.Ownership, varwidth=T)
+```
+
+### IntrestRates vs open credit lines
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Open.CREDIT.Lines, varwidth=T)
+```
+
+### IntrestRates vs revolving Credit Balance
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Revolving.CREDIT.Balance, varwidth=T)
+```
+
+### IntrestRates vs inquiries
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Inquiries.in.the.Last.6.Months, varwidth=T)
+```
+
+### IntrestRates vs loan  purpose -> medium dependence
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Loan.Purpose, varwidth=T)
+```
+
+### IntrestRates vs debt to income
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Debt.To.Income.Ratio, varwidth=T)
+```
+
+
+
+### try to find correlation for variables when FICO range is set constant 
+```{r, dependson="loadData"}
+
+
+ficoLevels <- sort(unique(loansFinal$FICO.Range))
+corrCoeff <- NULL
+
+i <- 1
+
+for(fico in ficoLevels ) {
+  
+  loansFICO <- loansFinal[loansFinal$FICO.Range == fico,]
+  
+  loansFICO$FICO.Range <- NULL
+  
+  corrCoeff <-  cbind(corrCoeff, cor(loansFICO)[,"Interest.Rate"])
+
+  i <- i+1
+}    
+
+colnames(corrCoeff) <- ficoLevels
+    
+```
+
+
+------
+
+## Modeling
+
+
+### IntrestRates vs debt to income
+```{r, dependson="ProcessData"}
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Debt.To.Income.Ratio, varwidth=T)
+lmDTIR <- lm(loansFinal$Interest.Rate ~ loansFinal$Debt.To.Income.Ratio)
+plot(loansFinal$Interest.Rate ~ loansFinal$Debt.To.Income.Ratio, pch=19, col="blue")
+abline(a=lmDTIR$coeff[1], b=lmDTIR$coeff[2], col="red")
+
+summary(lmDTIR)
+
+anova(lmDTIR)
+```
+
+### IntrestRates vs FICO -> two distinctive dependencies groups
+```{r, dependson="ProcessData"}
+
+lmFICO <- lm(loansFinal$Interest.Rate ~ loansFinal$FICO.Range)
+plot(loansFinal$Interest.Rate ~ loansFinal$FICO.Range, pch=19, col= as.numeric(as.factor(loansFinal$Loan.Length)))
+
+abline(a=lmFICO$coeff[1], b=lmFICO$coeff[2], col="red")
+
+summary(lmFICO)
+
+anova(lmFICO)
+```
+
+### IntrestRates vs FICO -> two distinctive dependencies groups
+```{r, dependson="ProcessData"}
+
+lmLP <- lm(loansFinal$Interest.Rate ~ loansFinal$Loan.Purpose)
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Loan.Purpose, pch=19,)
+
+abline(a=lm$coeff[1], b=lmFICO$coeff[2], col="red")
+
+summary(lmLP)
+
+anova(lmLP)
+```
+
+### FICO vs debt to income
+```{r, dependson="ProcessData"}
+
+lmFICO_DTIR <- lm(loansFinal$FICO.Range ~ loansFinal$Debt.To.Income.Ratio)
+
+plot(loansFinal$FICO.Range~ loansFinal$Debt.To.Income.Ratio, pch=19,)
+
+abline(a=lmFICO_DTIR$coeff[1], b=lmFICO_DTIR$coeff[2], col="red")
+
+summary(lmFICO_DTIR)
+
+anova(lmFICO_DTIR)
+```
+
+### FICO vs monthly income
+```{r, dependson="ProcessData"}
+
+lmFICO_MI <- lm(loansFinal$FICO.Range ~ loansFinal$Monthly.Income)
+
+plot(loansFinal$FICO.Range ~ loansFinal$Monthly.Income, pch=19,)
+
+abline(a=lmFICO_MI$coeff[1], b=lmFICO_MI$coeff[2], col="red")
+
+summary(lmFICO_MI)
+
+anova(lmFICO_MI)
+```
+
+### Interest Rate vs monthly income
+```{r, dependson="ProcessData"}
+
+lmMI <- lm(loansFinal$Interest.Rate ~ loansFinal$Monthly.Income)
+
+plot(loansFinal$Interest.Rate ~ loansFinal$Monthly.Income, pch=19,)
+
+abline(a=lmMI$coeff[1], b=lmMI$coeff[2], col="red")
+
+summary(lmMI)
+
+anova(lmMI)
+```
+
+### Interest Rate vs monthly income
+```{r, dependson="ProcessData"}
+
+lmS <- lm(loansFinal$Interest.Rate ~ loansFinal$State)
+
+plot(loansFinal$Interest.Rate ~ loansFinal$State, pch=19,)
+
+
+summary(lmS)
+
+anova(lmS)
+```
+
+
+
+### Interest Rate vs Inq
+```{r, dependson="ProcessData"}
+
+lmINQ <- lm(loansFinal$Interest.Rate ~ loansFinal$Inquiries.in.the.Last.6.Months)
+
+boxplot(loansFinal$Interest.Rate ~ loansFinal$Inquiries.in.the.Last.6.Months, varwidth=T)
+
+abline(a=lmINQ$coeff[1], b=lmINQ$coeff[2], col="red")
+
+summary(lmINQ)
+
+anova(lmINQ)
+```
+
+
+### Final Models
+```{r finalModels, dependson="filterData"}
+
+lmFinal <- lm(loansFinal$Interest.Rate ~ loansFinal$FICO.Range + 
+                                          loansFinal$Loan.Length + 
+                                          loansFinal$Inquiries.in.the.Last.6.Months + 
+                                          loansFinal$Loan.Length*loansFinal$FICO.Range 
+                                          )
+
+
+summary(lmFinal)
+
+anova(lmFinal)
+
+ind.36 <- loansFinal$Loan.Length == "36 months"
+ind.60 <- loansFinal$Loan.Length == "60 months" 
+
+
+loansFinal.36 <- loansFinal[ind.36,]
+
+loansFinal.60 <- loansFinal[ind.60,]
+
+```
+
+### 3D Plots
+```{r finalModels, dependson="filterData"}
+library(scatterplot3d)
+
+par(mfrow=c(1,2))
+
+s3d <- scatterplot3d(x = loansFinal.36$FICO.Range, y=  loansFinal.36$Inquiries.in.the.Last.6.Months, z =loansFinal.36$Interest.Rate, pch = 20, main = "36 months loans", ylim = c(0,8), xlab = "FICO", ylab ="Inquiries in the Last 6 Months", zlab = "Interest Rate (%)")
+
+s3d$plane3d(c(lmFinal$coef[1],lmFinal$coeff[2], lmFinal$coeff[4]) , lty = "dotted")
+
+orig <- s3d$xyz.convert(loansFinal.36$FICO.Range, loansFinal.36$Inquiries.in.the.Last.6.Months, loansFinal.36$Interest.Rate)
+plane <- s3d$xyz.convert(loansFinal.36$FICO.Range, loansFinal.36$Inquiries.in.the.Last.6.Months, fitted(lmFinal)[ind.36])
+i.negpos <- 1 + (resid(lmFinal)[ind.36] > 0)
+segments(orig$x, orig$y, plane$x, plane$y,col = c("blue", "red")[i.negpos])
+
+
+
+s3d <- scatterplot3d(x = loansFinal.60$FICO.Range, y=  loansFinal.60$Inquiries.in.the.Last.6.Months, z =loansFinal.60$Interest.Rate, pch = 20, main = "60 months loans",xlim=c(600,850), ylim = c(0,8) , xlab = "FICO", ylab ="Inquiries in the Last 6 Months", zlab = "Interest Rate")
+
+s3d$plane3d(c(lmFinal$coef[1]+lmFinal$coef[3],lmFinal$coeff[2]+lmFinal$coef[5], lmFinal$coeff[4]) , lty = "dotted")
+
+orig <- s3d$xyz.convert(loansFinal.60$FICO.Range, loansFinal.60$Inquiries.in.the.Last.6.Months, loansFinal.60$Interest.Rate)
+plane <- s3d$xyz.convert(loansFinal.60$FICO.Range, loansFinal.60$Inquiries.in.the.Last.6.Months, fitted(lmFinal)[ind.60])
+i.negpos <- 1 + (resid(lmFinal)[ind.60] > 0)
+segments(orig$x, orig$y, plane$x, plane$y,col = c("blue", "red")[i.negpos])
+
+
+```
+
+
+### Plots
+```{r, dependson="FinalModels"}
+
+par(mfrow=c(1,2))
+
+plot(loansFinal$FICO.Range, loansFinal$Interest.Rate, col = as.factor(loansFinal$Loan.Length), pch=19, xlab="FICO score", ylab ="Interest Rate (%)")
+
+legend(700,0.26, c("36 months loan", "60 months loan", "model for 36 months loan", "model for 60 months loan"), pch=19, col = as.factor(unique(loansFinal$Loan.Length)))
+
+abline(a=lmFinalFICO$coefficients[1], b=lmFinalFICO$coefficients[2] , col="orange", lwd=3 )
+
+abline(a=lmFinalFICO$coefficients[1] + lmFinalFICO$coefficients[3], b=lmFinalFICO$coefficients[2] + lmFinalFICO$coefficients[4]  , col="blue", lwd=3 )
+
+abline(a=lmFinal$coefficients[1], b=lmFinalFICO$coefficients[2] , col="orange", lwd=3 )
+
+abline(a=lmFinal$coefficients[1] + lmFinalFICO$coefficients[3], b=lmFinalFICO$coefficients[2] + lmFinalFICO$coefficients[4]  , col="blue", lwd=3 )
+
+
+
+plot(loansFinal$Inquiries.in.the.Last.6.Months, loansFinal$Interest.Rate, col = as.factor(loansFinal$Loan.Length), pch=19, ylab="Interest Rate (%)", xlab ="Inquiries in the Last 6 Months")
+
+
+abline(a=lmFinalINQ$coefficients[1], b=lmFinalINQ$coefficients[2] , col="orange", lwd=3 )
+abline(a=lmFinalINQ$coefficients[1] + lmFinalINQ$coefficients[3], b=lmFinalINQ$coefficients[2] , col="blue", lwd=3 )
+```
+
+

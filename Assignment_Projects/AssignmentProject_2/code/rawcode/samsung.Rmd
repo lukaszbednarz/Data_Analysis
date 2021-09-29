@@ -1,0 +1,275 @@
+Raw Loans Analysis
+========================
+
+------
+
+### Load libraries
+
+```{r}
+#library(maps)
+#library(Hmisc)
+```
+
+
+
+------
+
+## Processing
+
+Download the data, read the data in and save the raw data as an RDA file
+
+```{r loadData,cache=TRUE}
+setwd("C:/Users/Lukasz/Documents/R/AssignmentProject_2/code/rawcode")
+getwd()
+# download.file("https://spark-public.s3.amazonaws.com/dataanalysis/samsungData.rda",destfile="../../data/samsungDataDownloaded.rda")
+# 
+# dateDownloaded <- date()
+# dateDownloaded
+# 
+# saveRDS(dateDownloaded,file="../../data/samsungDataDownloaded.rda")
+# 
+# load("../../data/samsungDataDownloaded.rda")
+# 
+# save(samsungData, dateDownloaded,file="../../data/samsungData.rda")
+
+load("../../data/samsungData.rda")
+
+samsungData <- data.frame(samsungData)
+
+```
+
+
+### Look at the data set
+
+```{r, dependson="loadData"}
+head(samsungData)
+names(samsungData)
+
+sort(table(names(samsungData)))
+
+unique(samsungData$activity)
+unique(samsungData$subject)
+table(samsungData$subject)
+
+```
+
+### replace duplicated column names
+```{r, dependson="loadData"}
+# colNames <- names(samsungData)
+# colNamesTable <- table(colNames)
+# 
+# dupColNames <- names(colNamesTable[colNamesTable > 1])
+# 
+# dupColCount <- data.frame(t(rep(1, length(dupColNames))))
+# 
+# names(dupColCount) <- dupColNames
+# 
+# 
+# 
+# for (i in 1:length(colNames)) {
+#   
+#   name <- colNames[i]
+#   oldName <- name
+#   print(name)
+#   
+#   
+#   
+#   if (is.element(oldName, dupColNames)) {
+#     
+#     print( paste(name,dupColCount[oldName], sep="_"))
+#     
+#     colNames[i] <- paste(oldName,dupColCount[oldName], sep="_")
+#     
+#     dupColCount[oldName] <- dupColCount[oldName] +1
+#   }
+# }
+# 
+# colNames <- sub("\\(", "", colNames)
+# colNames <- sub("\\)", "", colNames)
+# colNames <- sub(",", "__", colNames)
+# colNames <- sub("\\-", "_m_", colNames)
+# 
+# names(samsungData) <- colNames
+# 
+# names(samsungData) <- c(paste("X", 1:(length(colNames)-2), sep="_"), colNames[(length(colNames)-1):length(colNames)])
+
+```
+
+### Find out about missing values
+```{r, dependson="loadData"}
+sum(is.na(samsungData))
+```
+
+### Create training set and test sets
+```{r splitData, dependson="loadData"}
+
+# trainData <- samsungData[is.element(samsungData$subject, c(1,3,5,6)),]
+
+trainData <- samsungData[!is.element(samsungData$subject, c(27,28,29,30)),]
+table(trainData$subject)
+
+testData <- samsungData[is.element(samsungData$subject, c(27,28,29,30)),]
+table(testData$subject)
+
+```
+
+### Try with a tree
+```{r , dependson="splitData"}
+library(tree)
+
+tree1 <- tree(as.factor(activity) ~ .,data=trainData)
+
+plot(tree1)
+text(tree1)
+
+summary(tree1)
+
+par(mfrow=c(1,2))
+plot(cv.tree(tree1,FUN=prune.tree,method="misclass"))
+plot(cv.tree(tree1))
+
+simTrain <- predict(tree1, type="class")
+simTest <- predict(tree1, testData, type="class")
+
+err_train <- sum(simTrain != as.factor(trainData$activity))/length(trainData$activity)
+err_test <- sum(simTest != as.factor(testData$activity))/length(testData$activity)
+
+```
+
+### Try with a rpart
+```{r , dependson="splitData"}
+library(rpart)
+tree2 <- rpart(as.factor(activity) ~ .,data=trainData)
+
+summary(tree2)
+
+printcp(tree2)
+
+plotcp(tree2) 
+
+rsq.rpart(tree2)
+
+
+print(tree2) 
+
+plot(tree2) 
+text(tree2)
+
+
+par(mfrow=c(1,2))
+plot(cv.tree(tree2,FUN=prune.tree,method="misclass"))
+plot(cv.tree(tree2))
+
+simTrain2 <- predict(tree2, type="class")
+simTest2 <- predict(tree2, testData, type="class")
+
+err_train2 <- sum(simTrain2 != as.factor(trainData$activity))/length(trainData$activity)
+err_test2 <- sum(simTest2 != as.factor(testData$activity))/length(testData$activity)
+
+
+```
+
+### Try with a random forest
+```{r , dependson="splitData"}
+library(randomForest)
+set.seed(33833)
+forest1 <- randomForest(as.factor(activity) ~ .,data=trainData,prox=TRUE)
+forest1
+summary(forest1)
+
+
+par(mfrow=c(1,2))
+plotDataRF <- plot(forest1, log = "y", main ="Random MSE per Class")
+
+legend(50, 0.2, colnames(plotDataRF), col = 1:7, lty = 1:7,
+       pch = "", ncol = 2, cex = 0.8)
+
+imp <- importance(forest1, type=2)
+
+maxContribVar <- as.matrix(rownames(imp)[order(imp,decreasing = T)][1:10])
+
+sort(imp)
+
+varImpPlot(forest1, sort=TRUE, n.var=min(30, nrow(forest1$importance)),
+type=NULL, class=NULL, scale=TRUE, main="Variable\nImportance")
+
+
+confMatrix <- table(simTest3, as.factor(testData$activity))
+
+class.error <- (apply(confMatrix,2,sum)-diag(confMatrix))/apply(confMatrix,2,sum)
+
+confMatrix <- cbind(confMatrix, class.error)
+
+varUsed(forest1, by.tree=FALSE, count=TRUE)
+
+impSort <- as.matrix(imp[order(imp, decreasing = T), ])
+rownames(impSort) <- rownames(imp)[order(imp)]
+
+simTrain3 <- predict(forest1, type="class")
+simTest3 <- predict(forest1, testData, type="class")
+
+err_train3 <- sum(simTrain3 != as.factor(trainData$activity))/length(trainData$activity)
+err_test3 <- sum(simTest3 != as.factor(testData$activity))/length(testData$activity)
+
+
+```
+
+### Try with limited number of variables
+```{r , dependson="splitData"}
+library(varSelRF)
+set.seed(12345)
+
+trainData2 <-trainData[,-c(562,563)]
+
+varSelRF1 <- varSelRF(trainData[,-c(562,563)], as.factor(trainData$activity))
+varSelRF1
+summary(varSelRF1)
+
+par(mfrow=c(1,2))
+plotObj <- plot(forest1, log = "y", main = "Mean Square Error for different classes")
+
+legend(50, 0.2, colnames(plotObj), ncol=3)
+
+imp <- importance(forest1)
+
+varImpPlot(forest1, sort=TRUE, n.var=min(30, nrow(forest1$importance)),
+type=NULL, class=NULL, scale=TRUE,
+main=deparse(substitute(forest1)))
+
+varUsed(forest1, by.tree=FALSE, count=TRUE)
+
+impSort <- imp[t(order(imp))];
+
+simTrain3 <- predict(forest1, type="class")
+simTest3 <- predict(forest1, testData, type="class")
+
+err_train3 <- sum(simTrain3 != as.factor(trainData$activity))/length(trainData$activity)
+err_test3 <- sum(simTest3 != as.factor(testData$activity))/length(testData$activity)
+
+
+```
+
+
+### Try with a svm
+```{r , dependson="splitData"}
+library(e1071)
+svm1 <- svm(as.factor(activity) ~ .,data=trainData)
+svm1
+summary(svm1)
+
+# visualize:
+plot(as.factor(testData$activity), col = 1:1000 %in% svm1$index + 1)
+points(as.Factor, pch = "+", col = 2, cex = 5)
+
+
+simTrain4 <- predict(svm1, type="class")
+simTest4 <- predict(svm1, testData, type="class")
+
+err_train4 <- sum(simTrain4 != as.factor(trainData$activity))/length(trainData$activity)
+err_test4 <- sum(simTest4 != as.factor(testData$activity))/length(testData$activity)
+
+
+```
+
+
+
